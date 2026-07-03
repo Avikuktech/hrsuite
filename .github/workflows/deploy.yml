@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,15 +20,55 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          port: 22
+          timeout: 60s
+          command_timeout: 30m
+
           script: |
+            set -e
+
             cd /home/techwarehuthrsuite/htdocs/techwarehuthrsuite.techwarehut.co
 
-            git pull origin main
+            echo "Current Commit:"
+            OLD_COMMIT=$(git rev-parse HEAD)
 
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+            echo "Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
 
-            npm install
+            echo "New Commit:"
+            NEW_COMMIT=$(git rev-parse HEAD)
 
-            npm run build
+            echo "Changed Files:"
+            CHANGED_FILES=$(git diff --name-only $OLD_COMMIT $NEW_COMMIT)
 
+            echo "$CHANGED_FILES"
+
+            # Composer
+            if echo "$CHANGED_FILES" | grep -E '^(composer\.json|composer\.lock)$'; then
+              echo "composer.json/composer.lock changed"
+              composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+            else
+              echo "Skipping Composer"
+            fi
+
+            # NPM
+            if echo "$CHANGED_FILES" | grep -E '^(package\.json|package-lock\.json)$'; then
+              echo "package.json changed"
+              npm ci
+            else
+              echo "Skipping npm install"
+            fi
+
+            # Build Assets
+            if echo "$CHANGED_FILES" | grep -E '^(resources/|public/|vite\.config\.js|vite\.config\.ts|package\.json|package-lock\.json)'; then
+              echo "Building assets"
+              npm run build
+            else
+              echo "Skipping npm build"
+            fi
+
+            # Laravel Cache
             php artisan optimize
+
+            echo "Deployment completed successfully."
