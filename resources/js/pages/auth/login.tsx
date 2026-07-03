@@ -95,7 +95,7 @@ export default function Login({ status, canResetPassword, demoBusinesses = [] }:
 
     return (
         <AuthLayout
-            title={t("Log in to your accountt")}
+            title={t("Log in to your account")}
             description={t("Enter your credentials to access your account")}
             status={status}
         >
